@@ -1,4 +1,4 @@
-use std::fs::File;
+use std::fs::{File};
 use std::fs::Permissions;
 use std::io::{BufWriter, Write};
 use std::os::unix::fs::PermissionsExt;
@@ -95,7 +95,14 @@ fn write_password_file(host: &String, port: &String, database: &String, user: &S
     match password {
         None => {
             if std::path::Path::new(pgpass_path).exists() {
-                log::info!("Found PGPASSFILE at: {:?}", pgpass_path);
+                let permissions = std::fs::metadata(pgpass_path).unwrap().permissions();
+                let mode = permissions.mode() & 0o777_u32;
+                if mode == 0o600 {
+                    log::info!("Found PGPASSFILE at: {:?}, permissions: {:#o}", pgpass_path, mode);
+                } else {
+                    log::warn!("Found PGPASSFILE at: {:?}, wrong permissions: {:#o}. Must be 0o600", pgpass_path, mode);
+                }
+
             } else {
                 log::info!("No credentials and no PGPASSFILE file provided. Will succeed on trust connections");
             }

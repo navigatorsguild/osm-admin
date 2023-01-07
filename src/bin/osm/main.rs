@@ -26,7 +26,7 @@ fn command() -> Command {
 }
 
 fn adjust_jobs_to_available_cpus(jobs: i16) -> i16 {
-    let mut adjusted_jobs = 2_i16;
+    let adjusted_jobs: i16;
     let available_cpus = num_cpus::get() as i16;
     if jobs <= 0 || jobs > available_cpus {
         adjusted_jobs = available_cpus;
