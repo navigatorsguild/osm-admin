@@ -1,0 +1,100 @@
+services:
+  osm-test-db:
+   container_name: osm-test-db
+   hostname: osm-test-db
+   build:
+     context: ./db
+     dockerfile: ./Dockerfile
+   deploy:
+     resources:
+       limits:
+         cpus: "2"
+         memory: 2G
+       reservations:
+         cpus: "2"
+         memory: 2G
+   ports:
+     - "127.0.0.1:5432:5432"
+   healthcheck:
+     test: [ "CMD-SHELL", "pg_isready -U postgres"]
+     interval: 20s
+     timeout: 5s
+     retries: 2
+   networks:
+     - "osm-test-net"
+   environment:
+     POSTGRES_PASSWORD: openstreetmap
+#     POSTGRES_HOST_AUTH_METHOD: trust
+   volumes:
+     - osm-test-db-vol:/var/lib/postgresql/data
+
+  osm-admin:
+    build:
+      context: ./
+      dockerfile: ./Dockerfile
+    deploy:
+      resources:
+        limits:
+          cpus: "2.1"
+          memory: 2G
+        reservations:
+          cpus: "2.1"
+          memory: 2G
+    command: [
+      "import",
+      "--input", "/var/lib/osm/input/test.osm.pbf",
+      "--input-format", "pbf",
+      "--output", "/var/lib/osm/output/test-dump",
+      "--host", "osm-test-db",
+      "--port", "5432",
+      "--user", "openstreetmap",
+      "--no-password"
+    ]
+    networks:
+      - osm-test-net
+    volumes:
+      - osm-test-vol:/var/lib/osm/
+      - ${PWD}/data/malta-latest.osm.pbf:/var/lib/osm/input/test.osm.pbf
+      - ${PWD}/db/pgpass:/root/.pgpass
+    depends_on:
+      osm-test-db:
+        condition: service_healthy
+
+  import-test:
+    build:
+      context: ./
+      dockerfile: ./import-test.dockerfile
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 2G
+        reservations:
+          cpus: "2"
+          memory: 2G
+    command: [
+      "--input", "/var/lib/osm/input/test.osm.pbf",
+      "--host", "osm-test-db",
+      "--port", "5432",
+      "--user", "openstreetmap",
+      "--password", "openstreetmap"
+    ]
+    networks:
+      - osm-test-net
+    volumes:
+      - osm-test-vol:/var/lib/osm/
+      - ${PWD}/data/malta-latest.osm.pbf:/var/lib/osm/input/test.osm.pbf
+      - ${PWD}/db/pgpass:/root/.pgpass
+    depends_on:
+      osm-admin:
+        condition: service_completed_successfully
+
+
+
+volumes:
+  osm-test-db-vol: {}
+  osm-test-vol: {}
+
+networks:
+  osm-test-net: {}
+
