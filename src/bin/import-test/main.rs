@@ -1,11 +1,11 @@
 use std::path::PathBuf;
 use std::process::exit;
+
 use clap::{arg, Command};
 use log::LevelFilter;
 use osmpbf::{Element, ElementReader};
-use simple_logger::SimpleLogger;
 use postgres::{Client, NoTls};
-
+use simple_logger::SimpleLogger;
 
 fn command() -> Command {
     Command::new("osm-import-test").about("Integration tests for OSM import")
@@ -17,7 +17,7 @@ fn command() -> Command {
         .arg_required_else_help(true)
 }
 
-pub fn main(){
+pub fn main() {
     let matches = command().get_matches();
     SimpleLogger::new().with_level(LevelFilter::Info).init().unwrap();
     log::info!("Started OSM import integration test");
