@@ -91,6 +91,19 @@ pub fn load(
     }
 }
 
+pub fn dump(
+    jobs: i16,
+    host: String,
+    port: String,
+    user: String,
+    password: Option<String>,
+    dump_path: &PathBuf,
+    var_lib_path: &PathBuf,
+    var_log_path: &PathBuf,
+) -> Result<(), GenericError> {
+    Ok(())
+}
+
 fn write_password_file(host: &String, port: &String, database: &String, user: &String, password: &Option<String>, pgpass_path: &PathBuf) -> Result<(), GenericError> {
     match password {
         None => {
@@ -136,3 +149,4 @@ fn write_password_file(host: &String, port: &String, database: &String, user: &S
     }
     Ok(())
 }
+
