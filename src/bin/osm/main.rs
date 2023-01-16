@@ -76,7 +76,12 @@ fn main() {
     log::info!("Finished OSM Admin.");
 }
 
-fn handle_import(import_help: StyledStr, var_log_path: &PathBuf, var_lib_path: &PathBuf, sub_matches: &ArgMatches) {
+fn handle_import(
+    import_help: StyledStr,
+    var_log_path: &PathBuf,
+    var_lib_path: &PathBuf,
+    sub_matches: &ArgMatches
+) {
     let input_path = sub_matches.get_one::<PathBuf>("input").unwrap().clone();
 
     let input_format = sub_matches.get_one::<String>("input-format").unwrap().clone();
@@ -130,7 +135,12 @@ fn handle_import(import_help: StyledStr, var_log_path: &PathBuf, var_lib_path: &
     }
 }
 
-fn handle_export(export_help: StyledStr, var_log_path: &PathBuf, var_lib_path: &PathBuf, sub_matches: &ArgMatches) {
+fn handle_export(
+    export_help: StyledStr,
+    var_log_path: &PathBuf,
+    var_lib_path: &PathBuf,
+    sub_matches: &ArgMatches
+) {
     let dump_path = sub_matches.get_one::<PathBuf>("dump").unwrap().clone();
 
     let output_path = sub_matches.get_one::<PathBuf>("output").unwrap().clone();
@@ -155,8 +165,8 @@ fn handle_export(export_help: StyledStr, var_log_path: &PathBuf, var_lib_path: &
 
     log::info!("Started OSM export");
     let result = export(
-        dump_path,
-        output_path,
+        &dump_path,
+        &output_path,
         output_format,
         compression_level,
         jobs,

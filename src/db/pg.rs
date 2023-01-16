@@ -1,5 +1,6 @@
 use std::fs::{File};
 use std::fs::Permissions;
+use std::io;
 use std::io::{BufWriter, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
@@ -8,7 +9,7 @@ use std::process::Command;
 use crate::error::osm_error::{GenericError, OsmError};
 use crate::reporting::stopwatch::StopWatch;
 
-pub fn load(
+pub fn restore(
     jobs: i16,
     host: String,
     port: String,
@@ -35,17 +36,10 @@ pub fn load(
 
     write_password_file(&host, &port, &database, &user, &password, &pgpass_path)?;
 
-    let pg_restore_stdout_path = var_log_path.join("pg_restore.log");
-    let pg_restore_stderr_path = var_log_path.join("pg_restore.error.log");
+    let stdout_path = var_log_path.join("pg_restore.log");
+    let stderr_path = var_log_path.join("pg_restore.error.log");
 
-
-    let pg_restore_stdout = File::create(&pg_restore_stdout_path).or_else(|e| {
-        Err(OsmError::new(format!("{:?}: {}", pg_restore_stdout_path, e)))
-    })?;
-    let pg_restore_stderr = File::create(&pg_restore_stderr_path).or_else(|e| {
-        Err(OsmError::new(format!("{:?}: {}", pg_restore_stderr_path, e)))
-    })?;
-
+    let (stdout, stderr) = create_redirects(&stdout_path, &stderr_path)?;
 
     let p = Command::new("pg_restore")
         .arg("-h").arg(host)
@@ -55,8 +49,8 @@ pub fn load(
         .arg("-d").arg(database)
         .arg("--no-password")
         .arg(dump_path)
-        .stdout(std::process::Stdio::from(pg_restore_stdout))
-        .stderr(std::process::Stdio::from(pg_restore_stderr))
+        .stdout(std::process::Stdio::from(stdout))
+        .stderr(std::process::Stdio::from(stderr))
         .spawn()?;
 
     let result = p.wait_with_output();
@@ -65,8 +59,8 @@ pub fn load(
             match output.status.code() {
                 None => {
                     log::error!("Failed loading OSM database, see pg_restore stdout at: {:?}, see stderr at: {:?}",
-                        pg_restore_stdout_path,
-                        pg_restore_stderr_path
+                        stdout_path,
+                        stderr_path
                     );
                     Err(Box::new(OsmError::new("Failed loading OSM database".to_string())))
                 }
@@ -77,8 +71,8 @@ pub fn load(
                 Some(code) => {
                     log::error!("Failed loading OSM database, error code: {}, see stdout at: {:?}, see stderr at: {:?}",
                         code,
-                        pg_restore_stdout_path,
-                        pg_restore_stderr_path
+                        stdout_path,
+                        stderr_path
                     );
                     Err(Box::new(OsmError::new("Failed loading OSM database".to_string())))
                 }
@@ -101,7 +95,94 @@ pub fn dump(
     var_lib_path: &PathBuf,
     var_log_path: &PathBuf,
 ) -> Result<(), GenericError> {
-    Ok(())
+    let mut stopwatch = StopWatch::new();
+    stopwatch.start();
+    log::info!("Dump OSM, host: {}:{}, user: {:?}, password provided: {}, jobs: {}, dump path: {:?}",
+        host,
+        port,
+        user,
+        match password {Some(_) => "Yes", None => "No"},
+        jobs,
+        dump_path
+    );
+
+    let database = "openstreetmap".to_string();
+    let pgpass_path = PathBuf::from("/root/.pgpass");
+
+    write_password_file(&host, &port, &database, &user, &password, &pgpass_path)?;
+
+    let stdout_path = var_log_path.join("pg_dump.log");
+    let stderr_path = var_log_path.join("pg_dump.error.log");
+
+    let (stdout, stderr) = create_redirects(&stdout_path, &stderr_path)?;
+
+    let p = Command::new("pg_dump")
+        .arg("-h").arg(host)
+        .arg("-p").arg(port)
+        .arg("-U").arg(user)
+        .arg("-j").arg(jobs.to_string())
+        .arg("-d").arg(database)
+        .arg("--no-password")
+        .arg("--file").arg(dump_path)
+        .arg("--format").arg("d")
+        .arg("--compress").arg("0")
+        .arg("--table").arg("public.nodes")
+        .arg("--table").arg("public.node_tags")
+        .arg("--table").arg("public.ways")
+        .arg("--table").arg("public.way_tags")
+        .arg("--table").arg("public.way_nodes")
+        .arg("--table").arg("public.relations")
+        .arg("--table").arg("public.relation_tags")
+        .arg("--table").arg("public.relation_members")
+        .arg("--table").arg("public.users")
+        .arg("--table").arg("public.changesets")
+        .stdout(std::process::Stdio::from(stdout))
+        .stderr(std::process::Stdio::from(stderr))
+        .spawn()?;
+
+    let result = p.wait_with_output();
+    match result {
+        Ok(output) => {
+            match output.status.code() {
+                None => {
+                    log::error!("Failed dumping OSM database, see pg_dump stdout at: {:?}, see stderr at: {:?}",
+                        stdout_path,
+                        stderr_path
+                    );
+                    Err(Box::new(OsmError::new("Failed dumping OSM database".to_string())))
+                }
+                Some(0) => {
+                    log::info!("Finished dumping OSM database. Time: {}", stopwatch);
+                    Ok(())
+                }
+                Some(code) => {
+                    log::error!("Failed dumping OSM database, error code: {}, see stdout at: {:?}, see stderr at: {:?}",
+                        code,
+                        stdout_path,
+                        stderr_path
+                    );
+                    Err(Box::new(OsmError::new("Failed dumping OSM database".to_string())))
+                }
+            }
+        }
+        Err(_) => {
+            log::error!("Failed dumping OSM database");
+            Err(Box::new(OsmError::new("Failed dumping OSM database".to_string())))
+        }
+    }
+}
+
+fn create_redirects(
+    stdout_path: &PathBuf,
+    stderr_path: &PathBuf,
+) -> Result<(File, File), GenericError> {
+    let stdout = File::create(stdout_path).or_else(|e| {
+        Err(OsmError::new(format!("{:?}: {}", stdout_path, e)))
+    })?;
+    let stderr = File::create(stderr_path).or_else(|e| {
+        Err(OsmError::new(format!("{:?}: {}", stderr_path, e)))
+    })?;
+    Ok((stdout, stderr))
 }
 
 fn write_password_file(host: &String, port: &String, database: &String, user: &String, password: &Option<String>, pgpass_path: &PathBuf) -> Result<(), GenericError> {
