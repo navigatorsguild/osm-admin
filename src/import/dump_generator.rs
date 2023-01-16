@@ -525,7 +525,7 @@ fn load_template_mapping(template_mapping_path: &PathBuf) -> Result<JsonValue, o
     if template_mapping.is_object() {
         Ok(template_mapping)
     } else {
-        Err(osm_error::GenericError::from(osm_error::OsmError { message: "Template mapping must be a JSON object".to_string() }))
+        Err(osm_error::GenericError::from(osm_error::OsmError { message: "Template mapping must be a JSON object".to_string()}))
     }
 }
 
