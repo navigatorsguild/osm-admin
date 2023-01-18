@@ -3,17 +3,20 @@ use std::collections::HashMap;
 use std::fs;
 use std::ops::{AddAssign, Deref, SubAssign};
 use std::path::PathBuf;
+use std::process::exit;
 
 use regex::Regex;
 use transient_btree_index::{BtreeConfig, BtreeIndex};
-// use crate::dump::node_relations_reader::NodeRelationsReader;
 
+use crate::dump::node_relations_reader::NodeRelationsReader;
 use crate::dump::table_def::TableDef;
 use crate::dump::table_reader::TableReader;
 use crate::dump::table_record::TableRecord;
 use crate::error::osm_error;
 use crate::error::osm_error::GenericError;
 use crate::reporting::stopwatch::StopWatch;
+
+// use crate::dump::node_relations_reader::NodeRelationsReader;
 
 pub mod table_def;
 pub mod table_fields;
@@ -22,6 +25,10 @@ mod table_reader;
 mod sql;
 mod node_relations_reader;
 mod node_relation;
+mod node_tag_record;
+mod node_record;
+mod user_record;
+mod changeset_record;
 
 pub(crate) struct Dump {
     path: PathBuf,
@@ -127,10 +134,10 @@ impl Dump {
     fn index_changesets(&mut self) -> Result<(), GenericError> {
         let reader = TableReader::new(self.tables.get("public.changesets").unwrap())?;
         for record in reader {
-            if let TableRecord::Changeset { id, user_id, ..} = record {
-                self.changeset_user_index.insert(id, user_id).unwrap();
+            if let TableRecord::Changeset { changeset_record } = record {
+                self.changeset_user_index.insert(changeset_record.id, changeset_record.user_id).unwrap();
             } else {
-                return Err(osm_error::GenericError::from(osm_error::OsmError { message: format!("Not a changeset record") }))
+                return Err(osm_error::GenericError::from(osm_error::OsmError { message: format!("Not a changeset record") }));
             }
         }
         Ok(())
@@ -139,39 +146,46 @@ impl Dump {
     fn index_users(&mut self) -> Result<(), GenericError> {
         let reader = TableReader::new(self.tables.get("public.users").unwrap())?;
         for record in reader {
-            if let TableRecord::User { id, display_name, .. } = record{
-                self.user_index.insert(id, display_name).unwrap();
+            if let TableRecord::User { user_record } = &record {
+                self.user_index.insert(user_record.id, user_record.display_name.clone()).unwrap();
             } else {
-                return Err(osm_error::GenericError::from(osm_error::OsmError { message: format!("Not a user record") }))
+                return Err(osm_error::GenericError::from(osm_error::OsmError { message: format!("Not a user record") }));
             }
         }
         Ok(())
     }
 
-    // fn write_nodes(&mut self) -> Result<(), GenericError> {
-    //     let nodes_def = self.tables.get("public.nodes").unwrap();
-    //     let node_tags_def = self.tables.get("public.node_tags").unwrap();
-    //     let reader = NodeRelationsReader::new(nodes_def, node_tags_def)?;
-    //     for node_relation in reader {
-    //         println!("{:?}", node_relation)
-    //     }
-    //
-    //     // for record in reader {
-    //     //     if let TableRecord::Node { .. } = record{
-    //     //     } else {
-    //     //         return Err(osm_error::GenericError::from(osm_error::OsmError { message: format!("Not a node record") }))
-    //     //     }
-    //     // }
-    //     //
-    //     // let reader = TableReader::new(self.tables.get("public.node_tags").unwrap())?;
-    //     // for record in reader {
-    //     //     if let TableRecord::NodeTag { .. } = record{
-    //     //     } else {
-    //     //         return Err(osm_error::GenericError::from(osm_error::OsmError { message: format!("Not a node record") }))
-    //     //     }
-    //     // }
-    //     Ok(())
-    // }
+    fn write_nodes(&mut self) -> Result<(), GenericError> {
+        let nodes_def = self.tables.get("public.nodes").unwrap();
+        let node_tags_def = self.tables.get("public.node_tags").unwrap();
+        let reader = NodeRelationsReader::new(nodes_def, node_tags_def)?;
+        // for node_relation in reader {
+        //     println!("{:?}", node_relation)
+        // }
+
+        reader.into_iter().enumerate().for_each(|(i, node_relation)| {
+            // println!("{}: {:?}", i, node_relation);
+            // if i == 320 {
+            //     exit(0)
+            // }
+        });
+
+        // for record in reader {
+        //     if let TableRecord::Node { .. } = record{
+        //     } else {
+        //         return Err(osm_error::GenericError::from(osm_error::OsmError { message: format!("Not a node record") }))
+        //     }
+        // }
+        //
+        // let reader = TableReader::new(self.tables.get("public.node_tags").unwrap())?;
+        // for record in reader {
+        //     if let TableRecord::NodeTag { .. } = record{
+        //     } else {
+        //         return Err(osm_error::GenericError::from(osm_error::OsmError { message: format!("Not a node record") }))
+        //     }
+        // }
+        Ok(())
+    }
 
     pub(crate) fn to_pbf(&mut self, output_path: &PathBuf) -> Result<(), GenericError> {
         log::info!("Start generating PBF: {}", output_path.to_str().unwrap());
@@ -180,7 +194,7 @@ impl Dump {
         self.index_changesets()?;
         self.index_users()?;
 
-        // self.write_nodes()?;
+        self.write_nodes()?;
 
         // write nodes
         // write ways
@@ -188,5 +202,4 @@ impl Dump {
         log::info!("osm.pbf generation time: {}", stopwatch);
         Ok(())
     }
-
 }
