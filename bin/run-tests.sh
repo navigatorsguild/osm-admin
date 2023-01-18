@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
 
+if ! command -v curl &> /dev/null; then
+  echo "curl not found, please install"
+  exit
+fi
+
 if [ ! -d ./data ]; then
   mkdir ./data
-  wget --directory-prefix data http://download.geofabrik.de/europe/malta-latest.osm.pbf
+  curl -o ./data/test.osm.pbf http://download.geofabrik.de/europe/malta-latest.osm.pbf
 fi
 
 touch ./pg_restore.log

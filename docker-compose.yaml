@@ -56,7 +56,7 @@ services:
       - osm-test-vol:/var/lib/osm/
       - ${PWD}/pg_restore.log:/var/log/osm/pg_restore.log
       - ${PWD}/pg_restore.error.log:/var/log/osm/pg_restore.error.log
-      - ${PWD}/data/malta-latest.osm.pbf:/var/lib/osm/input/test.osm.pbf
+      - ${PWD}/data/test.osm.pbf:/var/lib/osm/input/test.osm.pbf
       - ${PWD}/db/pgpass:/root/.pgpass
     depends_on:
       osm-test-db:
@@ -85,7 +85,7 @@ services:
       - osm-test-net
     volumes:
       - osm-test-vol:/var/lib/osm/
-      - ${PWD}/data/malta-latest.osm.pbf:/var/lib/osm/input/test.osm.pbf
+      - ${PWD}/data/test.osm.pbf:/var/lib/osm/input/test.osm.pbf
       - ${PWD}/db/pgpass:/root/.pgpass
     depends_on:
       osm-admin:
