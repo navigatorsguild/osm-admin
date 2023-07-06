@@ -1,13 +1,12 @@
-use std::fs::{File};
+use std::fs::File;
 use std::fs::Permissions;
-use std::io;
 use std::io::{BufWriter, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::process::Command;
 
-use crate::error::osm_error::{GenericError, OsmError};
-use crate::reporting::stopwatch::StopWatch;
+use anyhow::anyhow;
+use benchmark_rs::stopwatch::StopWatch;
 
 pub fn restore(
     jobs: i16,
@@ -18,9 +17,7 @@ pub fn restore(
     dump_path: &PathBuf,
     _var_lib_path: &PathBuf,
     var_log_path: &PathBuf,
-) -> Result<(), GenericError> {
-    let mut stopwatch = StopWatch::new();
-    stopwatch.start();
+) -> Result<(), anyhow::Error> {
     log::info!("Load OSM, host: {}:{}, user: {:?}, password provided: {}, jobs: {}, dump path: {:?}",
         host,
         port,
@@ -62,10 +59,9 @@ pub fn restore(
                         stdout_path,
                         stderr_path
                     );
-                    Err(Box::new(OsmError::new("Failed loading OSM database".to_string())))
+                    Err(anyhow!("Failed loading OSM database"))
                 }
                 Some(0) => {
-                    log::info!("Finished loading OSM database. Time: {}", stopwatch);
                     Ok(())
                 }
                 Some(code) => {
@@ -74,13 +70,13 @@ pub fn restore(
                         stdout_path,
                         stderr_path
                     );
-                    Err(Box::new(OsmError::new("Failed loading OSM database".to_string())))
+                    Err(anyhow!("Failed loading OSM database"))
                 }
             }
         }
         Err(_) => {
             log::error!("Failed loading OSM database");
-            Err(Box::new(OsmError::new("Failed loading OSM database".to_string())))
+            Err(anyhow!("Failed loading OSM database"))
         }
     }
 }
@@ -92,9 +88,9 @@ pub fn dump(
     user: String,
     password: Option<String>,
     dump_path: &PathBuf,
-    var_lib_path: &PathBuf,
+    _var_lib_path: &PathBuf,
     var_log_path: &PathBuf,
-) -> Result<(), GenericError> {
+) -> Result<(), anyhow::Error> {
     let mut stopwatch = StopWatch::new();
     stopwatch.start();
     log::info!("Dump OSM, host: {}:{}, user: {:?}, password provided: {}, jobs: {}, dump path: {:?}",
@@ -107,7 +103,7 @@ pub fn dump(
     );
 
     let database = "openstreetmap".to_string();
-    let pgpass_path = PathBuf::from("/root/.pgpass");
+    let pgpass_path = PathBuf::from("~/.pgpass");
 
     write_password_file(&host, &port, &database, &user, &password, &pgpass_path)?;
 
@@ -149,7 +145,7 @@ pub fn dump(
                         stdout_path,
                         stderr_path
                     );
-                    Err(Box::new(OsmError::new("Failed dumping OSM database".to_string())))
+                    Err(anyhow!("Failed dumping OSM database"))
                 }
                 Some(0) => {
                     log::info!("Finished dumping OSM database. Time: {}", stopwatch);
@@ -161,13 +157,13 @@ pub fn dump(
                         stdout_path,
                         stderr_path
                     );
-                    Err(Box::new(OsmError::new("Failed dumping OSM database".to_string())))
+                    Err(anyhow!("Failed dumping OSM database"))
                 }
             }
         }
         Err(_) => {
             log::error!("Failed dumping OSM database");
-            Err(Box::new(OsmError::new("Failed dumping OSM database".to_string())))
+            Err(anyhow!("Failed dumping OSM database"))
         }
     }
 }
@@ -175,17 +171,24 @@ pub fn dump(
 fn create_redirects(
     stdout_path: &PathBuf,
     stderr_path: &PathBuf,
-) -> Result<(File, File), GenericError> {
+) -> Result<(File, File), anyhow::Error> {
     let stdout = File::create(stdout_path).or_else(|e| {
-        Err(OsmError::new(format!("{:?}: {}", stdout_path, e)))
+        Err(anyhow!("{:?}: {}", stdout_path, e))
     })?;
     let stderr = File::create(stderr_path).or_else(|e| {
-        Err(OsmError::new(format!("{:?}: {}", stderr_path, e)))
+        Err(anyhow!("{:?}: {}", stderr_path, e))
     })?;
     Ok((stdout, stderr))
 }
 
-fn write_password_file(host: &String, port: &String, database: &String, user: &String, password: &Option<String>, pgpass_path: &PathBuf) -> Result<(), GenericError> {
+fn write_password_file(
+    host: &String,
+    port: &String,
+    database: &String,
+    user: &String,
+    password: &Option<String>,
+    pgpass_path: &PathBuf,
+) -> Result<(), anyhow::Error> {
     match password {
         None => {
             if std::path::Path::new(pgpass_path).exists() {
@@ -196,7 +199,6 @@ fn write_password_file(host: &String, port: &String, database: &String, user: &S
                 } else {
                     log::warn!("Found PGPASSFILE at: {:?}, wrong permissions: {:#o}. Must be 0o600", pgpass_path, mode);
                 }
-
             } else {
                 log::info!("No credentials and no PGPASSFILE file provided. Will succeed on trust connections");
             }
@@ -216,14 +218,14 @@ fn write_password_file(host: &String, port: &String, database: &String, user: &S
             );
             let permissions = Permissions::from_mode(0o600);
             let pgpass_file = File::create(pgpass_path).or_else(|e| {
-                Err(OsmError::new(format!("{:?}: {}", pgpass_path, e)))
+                Err(anyhow!("{:?}: {}", pgpass_path, e))
             })?;
             pgpass_file.set_permissions(permissions).or_else(|e| {
-                Err(OsmError::new(format!("{:?}: {}", pgpass_path, e)))
+                Err(anyhow!("{:?}: {}", pgpass_path, e))
             })?;
             let mut writer = BufWriter::new(pgpass_file);
             writer.write(credentials.as_bytes()).or_else(|e| {
-                Err(OsmError::new(format!("{:?}: {}", pgpass_path, e)))
+                Err(anyhow!("{:?}: {}", pgpass_path, e))
             })?;
             writer.flush()?;
         }

@@ -8,3 +8,6 @@
 .idea/
 
 data/
+*.log
+*.osm.pbf
+Cargo.lock

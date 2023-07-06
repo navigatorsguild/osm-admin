@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 use std::process::exit;
+use benchmark_rs::stopwatch::StopWatch;
 
 use clap::{arg, Command};
 use log::LevelFilter;
@@ -21,6 +22,8 @@ pub fn main() {
     let matches = command().get_matches();
     SimpleLogger::new().with_level(LevelFilter::Info).init().unwrap();
     log::info!("Started OSM import integration test");
+    let mut stop_watch = StopWatch::new();
+    stop_watch.start();
     let input_path = matches.get_one::<PathBuf>("input").unwrap().clone();
     let host = matches.get_one::<String>("host").unwrap().clone();
     let port = matches.get_one::<String>("port").unwrap().clone();
@@ -33,29 +36,29 @@ pub fn main() {
     let result = reader.for_each(|element| {
         match element {
             Element::Node(n) => {
-                let rows = client.query(format!("select id from public.current_nodes where id = {}", n.id()).as_str(), &[]).unwrap();
-                assert_eq!(rows.len(), 1);
+                let rows = client.query(format!("select node_id from public.nodes where node_id = {}", n.id()).as_str(), &[]).unwrap();
+                assert!(rows.len() >= 1);
             }
             Element::DenseNode(n) => {
-                let rows = client.query(format!("select id from public.current_nodes where id = {}", n.id).as_str(), &[]).unwrap();
-                assert_eq!(rows.len(), 1);
+                let rows = client.query(format!("select node_id from public.nodes where node_id = {}", n.id).as_str(), &[]).unwrap();
+                assert!(rows.len() >= 1);
             }
             Element::Way(w) => {
-                let rows = client.query(format!("select id from public.current_ways where id = {}", w.id()).as_str(), &[]).unwrap();
-                assert_eq!(rows.len(), 1);
+                let rows = client.query(format!("select way_id from public.ways where way_id = {}", w.id()).as_str(), &[]).unwrap();
+                assert!(rows.len() >= 1);
             }
             Element::Relation(r) => {
-                let rows = client.query(format!("select id from public.current_relations where id = {}", r.id()).as_str(), &[]).unwrap();
-                assert_eq!(rows.len(), 1);
+                let rows = client.query(format!("select relation_id from public.relations where relation_id = {}", r.id()).as_str(), &[]).unwrap();
+                assert!(rows.len() >= 1);
             }
         }
     });
     match result {
         Ok(_) => {
-            log::info!("Finished OSM import integration test")
+            log::info!("Finished OSM import integration test, time: {}", stop_watch)
         }
         Err(e) => {
-            log::error!("Failed OSM import integration test, error: {}", e);
+            log::error!("Failed OSM import integration test, error: {}, time: {}", e, stop_watch);
             exit(1)
         }
     }

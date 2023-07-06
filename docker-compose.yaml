@@ -28,7 +28,7 @@ services:
    volumes:
      - osm-test-db-vol:/var/lib/postgresql/data
 
-  osm-admin:
+  osm-admin-import:
     build:
       context: ./
       dockerfile: ./Dockerfile
@@ -44,7 +44,7 @@ services:
       "import",
       "--input", "/var/lib/osm/input/test.osm.pbf",
       "--input-format", "pbf",
-      "--output", "/var/lib/osm/output/test-dump",
+      "--output", "/var/lib/osm/output/generated-dump",
       "--host", "osm-test-db",
       "--port", "5432",
       "--user", "openstreetmap",
@@ -56,11 +56,56 @@ services:
       - osm-test-vol:/var/lib/osm/
       - ${PWD}/pg_restore.log:/var/log/osm/pg_restore.log
       - ${PWD}/pg_restore.error.log:/var/log/osm/pg_restore.error.log
-      - ${PWD}/data/test.osm.pbf:/var/lib/osm/input/test.osm.pbf
+      - ${PWD}/tests/fixtures/test.osm.pbf:/var/lib/osm/input/test.osm.pbf
       - ${PWD}/db/pgpass:/root/.pgpass
+    healthcheck:
+      test: [ "CMD", "/opt/osm-admin/bin/osm -h" ]
+      interval: 20s
+      timeout: 5s
+      retries: 2
     depends_on:
       osm-test-db:
         condition: service_healthy
+
+  osm-admin-export:
+    build:
+      context: ./
+      dockerfile: ./Dockerfile
+    deploy:
+      resources:
+        limits:
+          cpus: "2.1"
+          memory: 2G
+        reservations:
+          cpus: "2.1"
+          memory: 2G
+    command: [
+      "export",
+      "--dump", "/var/lib/osm/output/dump",
+      "--output", "/var/lib/osm/output/result.osm.pbf",
+      "--output-format", "pbf",
+      "--compression-level", "0",
+      "--calc-bounding-box",
+      "--host", "osm-test-db",
+      "--port", "5432",
+      "--user", "openstreetmap",
+      "--no-password"
+    ]
+    networks:
+      - osm-test-net
+    volumes:
+      - osm-test-vol:/var/lib/osm/
+      - ${PWD}/pg_dump.log:/var/log/osm/pg_dump.log
+      - ${PWD}/pg_dump.error.log:/var/log/osm/pg_dump.error.log
+      - ${PWD}/db/pgpass:/root/.pgpass
+    healthcheck:
+      test: [ "CMD", "/opt/osm-admin/bin/osm -h" ]
+      interval: 20s
+      timeout: 5s
+      retries: 2
+    depends_on:
+      osm-admin-import:
+        condition: service_completed_successfully
 
   import-test:
     build:
@@ -85,13 +130,37 @@ services:
       - osm-test-net
     volumes:
       - osm-test-vol:/var/lib/osm/
-      - ${PWD}/data/test.osm.pbf:/var/lib/osm/input/test.osm.pbf
+      - ${PWD}/tests/fixtures/test.osm.pbf:/var/lib/osm/input/test.osm.pbf
       - ${PWD}/db/pgpass:/root/.pgpass
     depends_on:
-      osm-admin:
+      osm-admin-import:
         condition: service_completed_successfully
 
-
+  export-test:
+    build:
+      context: ./
+      dockerfile: ./export-test.dockerfile
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 2G
+        reservations:
+          cpus: "2"
+          memory: 2G
+    command: [
+      "--input", "/var/lib/osm/input/test.osm.pbf",
+      "--output", "/var/lib/osm/output/result.osm.pbf",
+    ]
+    networks:
+      - osm-test-net
+    volumes:
+      - osm-test-vol:/var/lib/osm/
+      - ${PWD}/tests/fixtures/test.osm.pbf:/var/lib/osm/input/test.osm.pbf
+      - ${PWD}/db/pgpass:/root/.pgpass
+    depends_on:
+      osm-admin-export:
+        condition: service_completed_successfully
 
 volumes:
   osm-test-db-vol: {}
@@ -99,4 +168,3 @@ volumes:
 
 networks:
   osm-test-net: {}
-

@@ -19,7 +19,7 @@ RUN apt-get install -y postgresql-client
 RUN mkdir -p /var/log/osm
 RUN mkdir -p /var/lib/osm
 WORKDIR /opt/osm
-COPY --from=builder /home/osm-admin/target/release/import-test /opt/osm-admin/bin/import-test
+COPY --from=builder /home/osm-admin/target/release/export-test /opt/osm-admin/bin/export-test
 
-ENTRYPOINT ["/opt/osm-admin/bin/import-test"]
+ENTRYPOINT ["/opt/osm-admin/bin/export-test"]
 
