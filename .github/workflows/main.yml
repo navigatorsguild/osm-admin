@@ -30,4 +30,4 @@ jobs:
           push: true
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/osm-admin:latest
-            ${{ secrets.DOCKER_HUB_USERNAME }}/osm-admin:${{ github.ref_name }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/osm-admin:${{ github.ref_name }}
