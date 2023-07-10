@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::process::exit;
-use benchmark_rs::stopwatch::StopWatch;
 
+use benchmark_rs::stopwatch::StopWatch;
 use clap::{arg, Command};
 use log::LevelFilter;
 use osmpbf::{Element, ElementReader};

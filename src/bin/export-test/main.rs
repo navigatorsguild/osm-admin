@@ -33,9 +33,6 @@ pub fn main() -> Result<(), anyhow::Error> {
     let mut input_element = input_elements.next();
     let mut output_element = output_elements.next();
     while input_element.is_some() && output_element.is_some() {
-        // println!("input: {:?}", input_element);
-        // println!("output: {:?}", output_element);
-        // println!("");
         assert!(elements_are_equal(input_element.unwrap(), output_element.unwrap()));
         input_element = input_elements.next();
         output_element = output_elements.next();

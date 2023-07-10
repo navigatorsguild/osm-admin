@@ -8,15 +8,16 @@ use clap::{arg, ArgMatches, Command};
 use num_cpus;
 use osm_io::osm::model::bounding_box::BoundingBox;
 use simple_logger::SimpleLogger;
+use tikv_jemallocator::Jemalloc;
 
 use osm_admin::{export, import};
-use tikv_jemallocator::Jemalloc;
 
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
 
 fn command() -> Command {
     Command::new("osm").about("Tools for OSM database administration").subcommand_required(true).arg_required_else_help(true).allow_external_subcommands(true)
+        .arg(arg!(--verbose "Print progress information").required(false).num_args(0))
         .subcommand(
             Command::new("import").about("Import OSM from file into database")
                 .arg(arg!(--input <INPUT> "Input file path").required(true).value_parser(clap::value_parser!(PathBuf)).num_args(1))
@@ -26,9 +27,11 @@ fn command() -> Command {
                 .arg(arg!(--jobs <JOBS> "Number of database load jobs. Zero means autodetect CPU allocation and use all CPUs. When more jobs than CPUs specified, the number is capped on CPU limit").value_parser(0..1024).default_value("0").num_args(1))
                 .arg(arg!(--host <HOST> "Database host").required(true).num_args(1))
                 .arg(arg!(--port <PORT> "Database port").default_value("5432").num_args(1))
+                .arg(arg!(--database <DATABASE> "Database name").default_value("openstreetmap").num_args(1))
                 .arg(arg!(--user <USER> "Database administrator user name").value_parser(clap::value_parser!(String)).required(true).num_args(1))
                 .arg(arg!(--password "Prompt for password. Either --password or --no-password must be present.").required(false).num_args(0))
                 .arg(arg!(--"no-password" "Don't prompt for password. Use PGPASSFILE if available").required(false).num_args(0))
+                .arg(arg!(--verbose "Print progress information").required(false).num_args(0))
                 .arg_required_else_help(true),
         )
         .subcommand(
@@ -45,6 +48,7 @@ fn command() -> Command {
                 .arg(arg!(--jobs <JOBS> "Number of database dump jobs. Zero means autodetect CPU allocation and use all CPUs. When more jobs than CPUs specified, the number is capped on CPU limit").value_parser(0..1024).default_value("0").num_args(1))
                 .arg(arg!(--host <HOST> "Database host").required(true).num_args(1))
                 .arg(arg!(--port <PORT> "Database port").default_value("5432").num_args(1))
+                .arg(arg!(--database <DATABASE> "Database name").default_value("openstreetmap").num_args(1))
                 .arg(arg!(--user <USER> "Database administrator user name").value_parser(clap::value_parser!(String)).required(true).num_args(1))
                 .arg(arg!(--password "Prompt for password. Either --password or --no-password must be present.").required(false).num_args(0))
                 .arg(arg!(--"no-password" "Don't prompt for password. Use PGPASSFILE if available").required(false).num_args(0))
@@ -64,13 +68,16 @@ fn adjust_jobs_to_available_cpus(jobs: i16) -> i16 {
 }
 
 fn main() -> Result<(), Error> {
-    SimpleLogger::new().init()?;
     let mut stopwatch = StopWatch::new();
     stopwatch.start();
 
     let command = command();
     let mut command_clone = command.clone();
     let matches = command.get_matches();
+    let verbose = matches.get_flag("verbose");
+    if verbose {
+        SimpleLogger::new().init()?;
+    }
 
     log::info!("Started OSM Admin.");
     let var_log_path = PathBuf::from("/var/log/osm/");
@@ -78,10 +85,10 @@ fn main() -> Result<(), Error> {
 
     let result = match matches.subcommand() {
         Some(("import", sub_matches)) => {
-            handle_import(&var_log_path, &var_lib_path, sub_matches)
+            handle_import(&var_log_path, &var_lib_path, sub_matches, verbose)
         }
         Some(("export", sub_matches)) => {
-            handle_export(&var_log_path, &var_lib_path, sub_matches)
+            handle_export(&var_log_path, &var_lib_path, sub_matches, verbose)
         }
         Some((_, _)) => {
             command_clone.print_help()?;
@@ -108,6 +115,7 @@ fn handle_import(
     var_log_path: &PathBuf,
     var_lib_path: &PathBuf,
     sub_matches: &ArgMatches,
+    verbose: bool,
 ) -> Result<(), Error> {
     log::info!("Started OSM import");
     let input_path = sub_matches.get_one::<PathBuf>("input")
@@ -130,6 +138,9 @@ fn handle_import(
     let port = sub_matches.get_one::<String>("port")
         .unwrap()
         .clone();
+    let database = sub_matches.get_one::<String>("database")
+        .unwrap()
+        .clone();
     let user = sub_matches.get_one::<String>("user")
         .unwrap()
         .clone();
@@ -145,10 +156,12 @@ fn handle_import(
         jobs,
         host,
         port,
+        database,
         user,
         password,
         &var_lib_path,
         &var_log_path,
+        verbose,
     )
 }
 
@@ -156,6 +169,7 @@ fn handle_export(
     var_log_path: &PathBuf,
     var_lib_path: &PathBuf,
     sub_matches: &ArgMatches,
+    verbose: bool,
 ) -> Result<(), Error> {
     let dump_path = sub_matches.get_one::<PathBuf>("dump")
         .unwrap()
@@ -189,6 +203,9 @@ fn handle_export(
     let port = sub_matches.get_one::<String>("port")
         .unwrap()
         .clone();
+    let database = sub_matches.get_one::<String>("database")
+        .unwrap()
+        .clone();
     let user = sub_matches.get_one::<String>("user")
         .unwrap()
         .clone();
@@ -210,10 +227,12 @@ fn handle_export(
         jobs,
         host,
         port,
+        database,
         user,
         password,
         &var_lib_path,
         &var_log_path,
+        verbose,
     );
     match &result {
         Ok(_) => {

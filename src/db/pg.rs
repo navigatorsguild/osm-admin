@@ -1,17 +1,64 @@
 use std::fs::File;
 use std::fs::Permissions;
-use std::io::{BufWriter, Write};
+use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::process::Command;
 
 use anyhow::anyhow;
 use benchmark_rs::stopwatch::StopWatch;
+use postgres::{Client, NoTls};
 
-pub fn restore(
+pub(crate) fn count_objects(
+    host: String,
+    port: String,
+    database: String,
+    user: String,
+    password: Option<String>,
+) -> Result<(i64, i64, i64), anyhow::Error> {
+    let connection_string = match password {
+        None => {
+            let pgpass_path = PathBuf::from("/root/.pgpass");
+            let pgpass_password_opt = read_password_file(&host, &port, &database, &user, &pgpass_path)?;
+            match pgpass_password_opt {
+                None => {
+                    log::info!("No credentials and no correct PGPASSFILE entry provided. Will succeed on trust connections");
+                    format!("host={host} port={port} user={user} dbname=openstreetmap")
+                }
+                Some(pgpass_password) => {
+                    log::info!("Using password from PGPASSFILE");
+                    format!("host={host} port={port} user={user} password={pgpass_password} dbname=openstreetmap")
+                }
+            }
+        }
+        Some(password) => {
+            format!("host={host} port={port} user={user} password={password} dbname=openstreetmap")
+        }
+    };
+    let mut client = Client::connect(
+        connection_string.as_str(),
+        NoTls,
+    )?;
+    let rows = client.query(format!("select relname, n_live_tup from pg_stat_user_tables where schemaname = 'public' AND (relname = 'nodes' OR relname = 'ways' OR relname = 'relations');").as_str(), &[])?;
+    let mut result = (0, 0, 0);
+    for row in rows {
+        let relname: String = row.get("relname");
+        let n_live_tup: i64 = row.get("n_live_tup");
+        match relname.as_str() {
+            "nodes" => { result.0 = n_live_tup }
+            "ways" => { result.1 = n_live_tup }
+            "relations" => { result.2 = n_live_tup }
+            _ => {}
+        }
+    }
+    Ok(result)
+}
+
+pub(crate) fn restore(
     jobs: i16,
     host: String,
     port: String,
+    database: String,
     user: String,
     password: Option<String>,
     dump_path: &PathBuf,
@@ -27,10 +74,7 @@ pub fn restore(
         dump_path
     );
 
-    // TODO: get database as parameter
-    let database = "openstreetmap".to_string();
     let pgpass_path = PathBuf::from("/root/.pgpass");
-
     write_password_file(&host, &port, &database, &user, &password, &pgpass_path)?;
 
     let stdout_path = var_log_path.join("pg_restore.log");
@@ -81,10 +125,11 @@ pub fn restore(
     }
 }
 
-pub fn dump(
+pub(crate) fn dump(
     jobs: i16,
     host: String,
     port: String,
+    database: String,
     user: String,
     password: Option<String>,
     dump_path: &PathBuf,
@@ -102,8 +147,7 @@ pub fn dump(
         dump_path
     );
 
-    let database = "openstreetmap".to_string();
-    let pgpass_path = PathBuf::from("~/.pgpass");
+    let pgpass_path = PathBuf::from("/root/.pgpass");
 
     write_password_file(&host, &port, &database, &user, &password, &pgpass_path)?;
 
@@ -141,21 +185,27 @@ pub fn dump(
         Ok(output) => {
             match output.status.code() {
                 None => {
-                    log::error!("Failed dumping OSM database, see pg_dump stdout at: {:?}, see stderr at: {:?}",
+                    log::error!("Failed dumping OSM database, see pg_dump stdout at: {:?}, see stderr at: {:?}, time: {}",
                         stdout_path,
-                        stderr_path
+                        stderr_path,
+                        stopwatch,
                     );
                     Err(anyhow!("Failed dumping OSM database"))
                 }
                 Some(0) => {
-                    log::info!("Finished dumping OSM database. Time: {}", stopwatch);
+                    let du = benchmark_rs::disk_usage::disk_usage(&dump_path)?;
+                    log::info!("Finished dumping OSM database, disk: {}, time: {}",
+                        benchmark_rs::disk_usage::to_human(du),
+                        stopwatch
+                    );
                     Ok(())
                 }
                 Some(code) => {
-                    log::error!("Failed dumping OSM database, error code: {}, see stdout at: {:?}, see stderr at: {:?}",
+                    log::error!("Failed dumping OSM database, error code: {}, see stdout at: {:?}, see stderr at: {:?}, time: {}",
                         code,
                         stdout_path,
-                        stderr_path
+                        stderr_path,
+                        stopwatch,
                     );
                     Err(anyhow!("Failed dumping OSM database"))
                 }
@@ -233,3 +283,69 @@ fn write_password_file(
     Ok(())
 }
 
+fn read_password_file(
+    host: &String,
+    port: &String,
+    database: &String,
+    user: &String,
+    pgpass_path: &PathBuf,
+) -> Result<Option<String>, anyhow::Error> {
+    if pgpass_path.exists() {
+        let permissions = std::fs::metadata(pgpass_path).unwrap().permissions();
+        let mode = permissions.mode() & 0o777_u32;
+        if mode == 0o600 {
+            log::info!("Found PGPASSFILE at: {:?}, permissions: {:#o}", pgpass_path, mode);
+            let pgpass_file = BufReader::new(File::open(pgpass_path)?);
+
+            let server_prefix = format!("{}:{}:{}:{}",
+                                        host,
+                                        port,
+                                        database,
+                                        user
+            );
+            let mut result = None;
+            for line_result in pgpass_file.lines() {
+                let line = line_result?;
+                if line.starts_with(&server_prefix) {
+                    let parts: Vec<String> = line.split(":").map(|s| s.to_string()).collect();
+                    result = parts.last().cloned();
+                }
+            }
+            Ok(result)
+        } else {
+            let error_string = format!("Found PGPASSFILE at: {:?}, wrong permissions: {:#o}. Must be 0o600", pgpass_path, mode);
+            log::warn!("{}", error_string);
+            Err(anyhow!(error_string))
+        }
+    } else {
+        log::info!("No credentials and no PGPASSFILE file provided. Will succeed on trust connections");
+        Ok(None)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // use crate::db::pg::count_objects;
+    //
+    // #[test]
+    // fn test_count_objects() -> Result<(), anyhow::Error> {
+    //     let host = "localhost".to_string();
+    //     let port = "5432".to_string();
+    //     let user = "openstreetmap".to_string();
+    //     let password = Some("openstreetmap".to_string());
+    //     let (nodes, ways, relations) = count_objects(host, port, user, password)?;
+    //     println!("{nodes}, {ways}, {relations}");
+    //     Ok(())
+    // }
+    //
+    // #[test]
+    // fn test_count_objects_no_password() -> Result<(), anyhow::Error> {
+    //     let host = "localhost".to_string();
+    //     let port = "5432".to_string();
+    //     let user = "openstreetmap".to_string();
+    //     let password = None;
+    //     let (nodes, ways, relations) = count_objects(host, port, user, password)?;
+    //     println!("{nodes}, {ways}, {relations}");
+    //     Ok(())
+    // }
+}
