@@ -14,8 +14,8 @@ touch ./pg_dump.error.log
 chmod go-rwx ./db/pgpass
 
 docker compose -f ./docker-compose.yaml down --remove-orphans -v --rmi local
-#docker compose -f ./docker-compose.yaml build
+docker compose -f ./docker-compose.yaml build
 #docker compose -f ./docker-compose.yaml run --service-ports  osm-admin-import
 #docker compose -f ./docker-compose.yaml run --service-ports  import-test
 #docker compose -f ./docker-compose.yaml run --service-ports  osm-admin-export
-#docker compose -f ./docker-compose.yaml run --service-ports  export-test
+docker compose -f ./docker-compose.yaml run --service-ports  export-test
