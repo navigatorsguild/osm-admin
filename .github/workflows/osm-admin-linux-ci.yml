@@ -1,4 +1,4 @@
-name: osm-admin-macos-ci
+name: osm-admin-linux-ci
 
 on:
   push:
