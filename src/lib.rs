@@ -136,7 +136,7 @@ pub fn export(
 
     let info = FileInfo::new(
         calculate_bounding_box(calc_bounding_box, bounding_box, &reader)?,
-        ["OsmSchema-V0.6", "DenseNodes"].map(|s| s.to_string()).to_vec(),
+        ["OsmSchema-V0.6", "DenseNodes", "HistoricalInformation"].map(|s| s.to_string()).to_vec(),
         ["Sort.Type_then_ID"].map(|s| s.to_string()).to_vec(),
         Some(format!("osm-admin-{}", option_env!("CARGO_PKG_VERSION").unwrap())),
         Some("from-apidb-dump".to_string()),
