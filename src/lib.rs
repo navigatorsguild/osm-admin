@@ -3,6 +3,7 @@ extern crate core;
 use std::path::PathBuf;
 
 use benchmark_rs::stopwatch::StopWatch;
+use chrono::{DateTime, SecondsFormat, Utc};
 use num_format::{Locale, ToFormattedString};
 use osm_io::osm::apidb_dump::read::reader::Reader;
 use osm_io::osm::apidb_dump::write::writer::Writer as ApiDbDumpWriter;
@@ -114,7 +115,7 @@ pub fn export(
 ) -> Result<(), anyhow::Error> {
     let mut stopwatch = StopWatch::new();
     stopwatch.start();
-    db::pg::dump(
+    let (dump_transaction_id, dump_timestamp) = db::pg::dump(
         jobs,
         host.clone(),
         port.clone(),
@@ -132,14 +133,21 @@ pub fn export(
     let reader = Reader::new(dump_path.clone(), dump_path.clone())?;
     log::info!("Finished creating apidb reader, time: {}", create_reader_stopwatch);
 
+    let (selected_osmosis_replication_timestamp, selected_osmosis_replication_sequence_number) = select_replication_params(
+        osmosis_replication_timestamp,
+        osmosis_replication_sequence_number,
+        dump_timestamp,
+        dump_transaction_id,
+    );
+
     let info = FileInfo::new(
         calculate_bounding_box(calc_bounding_box, bounding_box, &reader)?,
         ["OsmSchema-V0.6", "DenseNodes", "HistoricalInformation"].map(|s| s.to_string()).to_vec(),
         ["Sort.Type_then_ID"].map(|s| s.to_string()).to_vec(),
         Some(format!("osm-admin-{}", option_env!("CARGO_PKG_VERSION").unwrap())),
         Some("from-apidb-dump".to_string()),
-        osmosis_replication_timestamp,
-        osmosis_replication_sequence_number,
+        selected_osmosis_replication_timestamp,
+        selected_osmosis_replication_sequence_number,
         osmosis_replication_base_url,
     );
 
@@ -175,6 +183,39 @@ pub fn export(
 
     log::info!("Osm export time: {}", stopwatch);
     Ok(())
+}
+
+fn select_replication_params(
+    osmosis_replication_timestamp: Option<i64>,
+    osmosis_replication_sequence_number: Option<i64>,
+    dump_timestamp: DateTime<Utc>,
+    dump_transaction_id: u64
+) -> (Option<i64>, Option<i64>){
+    let timestamp = match osmosis_replication_timestamp {
+        None => {
+            log::info!(
+                "No osmosis_replication_timestamp provided, using dump timestamp: {}",
+                dump_timestamp.to_rfc3339_opts(SecondsFormat::Secs, true)
+            );
+            Some(dump_timestamp.timestamp_millis() / 1000)
+        }
+        Some(timestamp) => {
+            Some(timestamp)
+        }
+    };
+    let sequence_number = match osmosis_replication_sequence_number{
+        None => {
+            log::info!(
+                "No osmosis_replication_sequence_number provided, using dump transaction id: {}",
+                dump_transaction_id
+            );
+            Some(dump_transaction_id as i64)
+        }
+        Some(sequence_number) => {
+            Some(sequence_number)
+        }
+    };
+    (timestamp, sequence_number)
 }
 
 fn calculate_bounding_box(calc_bounding_box: bool, bounding_box_opt: Option<BoundingBox>, reader: &Reader) -> Result<Option<BoundingBox>, anyhow::Error> {

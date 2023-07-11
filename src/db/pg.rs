@@ -4,9 +4,11 @@ use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::process::Command;
+use std::str::FromStr;
 
 use anyhow::anyhow;
 use benchmark_rs::stopwatch::StopWatch;
+use chrono::{DateTime, Utc};
 use postgres::{Client, NoTls};
 
 pub(crate) fn count_objects(
@@ -16,6 +18,23 @@ pub(crate) fn count_objects(
     user: String,
     password: Option<String>,
 ) -> Result<(i64, i64, i64), anyhow::Error> {
+    let mut client = create_client(&host, &port, &database, &user, password)?;
+    let rows = client.query(format!("select relname, n_live_tup from pg_stat_user_tables where schemaname = 'public' AND (relname = 'nodes' OR relname = 'ways' OR relname = 'relations');").as_str(), &[])?;
+    let mut result = (0, 0, 0);
+    for row in rows {
+        let relname: String = row.get("relname");
+        let n_live_tup: i64 = row.get("n_live_tup");
+        match relname.as_str() {
+            "nodes" => { result.0 = n_live_tup }
+            "ways" => { result.1 = n_live_tup }
+            "relations" => { result.2 = n_live_tup }
+            _ => {}
+        }
+    }
+    Ok(result)
+}
+
+fn create_client(host: &String, port: &String, database: &String, user: &String, password: Option<String>) -> Result<Client, anyhow::Error> {
     let connection_string = match password {
         None => {
             let pgpass_path = PathBuf::from("/root/.pgpass");
@@ -35,23 +54,12 @@ pub(crate) fn count_objects(
             format!("host={host} port={port} user={user} password={password} dbname=openstreetmap")
         }
     };
-    let mut client = Client::connect(
+    let client = Client::connect(
         connection_string.as_str(),
         NoTls,
-    )?;
-    let rows = client.query(format!("select relname, n_live_tup from pg_stat_user_tables where schemaname = 'public' AND (relname = 'nodes' OR relname = 'ways' OR relname = 'relations');").as_str(), &[])?;
-    let mut result = (0, 0, 0);
-    for row in rows {
-        let relname: String = row.get("relname");
-        let n_live_tup: i64 = row.get("n_live_tup");
-        match relname.as_str() {
-            "nodes" => { result.0 = n_live_tup }
-            "ways" => { result.1 = n_live_tup }
-            "relations" => { result.2 = n_live_tup }
-            _ => {}
-        }
-    }
-    Ok(result)
+    ).or_else(|e| Err(anyhow!("{}: {}", connection_string, e)))?;
+
+    Ok(client)
 }
 
 pub(crate) fn restore(
@@ -135,7 +143,7 @@ pub(crate) fn dump(
     dump_path: &PathBuf,
     _var_lib_path: &PathBuf,
     var_log_path: &PathBuf,
-) -> Result<(), anyhow::Error> {
+) -> Result<(u64, DateTime<Utc>), anyhow::Error> {
     let mut stopwatch = StopWatch::new();
     stopwatch.start();
     log::info!("Dump OSM, host: {}:{}, user: {:?}, password provided: {}, jobs: {}, dump path: {:?}",
@@ -155,6 +163,22 @@ pub(crate) fn dump(
     let stderr_path = var_log_path.join("pg_dump.error.log");
 
     let (stdout, stderr) = create_redirects(&stdout_path, &stderr_path)?;
+
+    let mut client = create_client(&host, &port, &database, &user, password)?;
+        client.query(format!("begin transaction isolation level repeatable read;").as_str(), &[])?;
+    let result = client.query("select  pg_export_snapshot() as snapshot_name, cast(pg_current_xact_id () as text) as transaction_id, cast(current_timestamp as text) as timestamp;", &[])?;
+    let (snapshot_name, transaction_id, timestamp): (String, u64, DateTime<Utc>) = match result.get(0) {
+        None => {
+            Err(anyhow!("failed"))
+        }
+        Some(row) => {
+            let snapshot_name: String = row.get("snapshot_name");
+            let transaction_id = u64::from_str(row.get("transaction_id"))?;
+            let timestamp_str: String = row.get("timestamp");
+            let timestamp = DateTime::<Utc>::from(DateTime::parse_from_str(timestamp_str.as_str(), "%Y-%m-%d %H:%M:%S%.f%#z")?);
+            Ok((snapshot_name, transaction_id, timestamp))
+        }
+    }?;
 
     let p = Command::new("pg_dump")
         .arg("-h").arg(host)
@@ -176,11 +200,13 @@ pub(crate) fn dump(
         .arg("--table").arg("public.relation_members")
         .arg("--table").arg("public.users")
         .arg("--table").arg("public.changesets")
+        .arg("--snapshot").arg(snapshot_name)
         .stdout(std::process::Stdio::from(stdout))
         .stderr(std::process::Stdio::from(stderr))
         .spawn()?;
 
     let result = p.wait_with_output();
+
     match result {
         Ok(output) => {
             match output.status.code() {
@@ -190,6 +216,7 @@ pub(crate) fn dump(
                         stderr_path,
                         stopwatch,
                     );
+                    client.query(format!("rollback").as_str(), &[])?;
                     Err(anyhow!("Failed dumping OSM database"))
                 }
                 Some(0) => {
@@ -198,7 +225,8 @@ pub(crate) fn dump(
                         benchmark_rs::disk_usage::to_human(du),
                         stopwatch
                     );
-                    Ok(())
+                    client.query(format!("commit").as_str(), &[])?;
+                    Ok((transaction_id, timestamp))
                 }
                 Some(code) => {
                     log::error!("Failed dumping OSM database, error code: {}, see stdout at: {:?}, see stderr at: {:?}, time: {}",
@@ -207,12 +235,14 @@ pub(crate) fn dump(
                         stderr_path,
                         stopwatch,
                     );
+                    client.query(format!("rollback").as_str(), &[])?;
                     Err(anyhow!("Failed dumping OSM database"))
                 }
             }
         }
         Err(_) => {
             log::error!("Failed dumping OSM database");
+            client.query(format!("rollback").as_str(), &[])?;
             Err(anyhow!("Failed dumping OSM database"))
         }
     }
@@ -223,10 +253,10 @@ fn create_redirects(
     stderr_path: &PathBuf,
 ) -> Result<(File, File), anyhow::Error> {
     let stdout = File::create(stdout_path).or_else(|e| {
-        Err(anyhow!("{:?}: {}", stdout_path, e))
+        Err(anyhow!("{}: {}", stdout_path.display(), e))
     })?;
     let stderr = File::create(stderr_path).or_else(|e| {
-        Err(anyhow!("{:?}: {}", stderr_path, e))
+        Err(anyhow!("{}: {}", stderr_path.display(), e))
     })?;
     Ok((stdout, stderr))
 }
@@ -268,14 +298,14 @@ fn write_password_file(
             );
             let permissions = Permissions::from_mode(0o600);
             let pgpass_file = File::create(pgpass_path).or_else(|e| {
-                Err(anyhow!("{:?}: {}", pgpass_path, e))
+                Err(anyhow!("{}: {}", pgpass_path.display(), e))
             })?;
             pgpass_file.set_permissions(permissions).or_else(|e| {
-                Err(anyhow!("{:?}: {}", pgpass_path, e))
+                Err(anyhow!("{}: {}", pgpass_path.display(), e))
             })?;
             let mut writer = BufWriter::new(pgpass_file);
             writer.write(credentials.as_bytes()).or_else(|e| {
-                Err(anyhow!("{:?}: {}", pgpass_path, e))
+                Err(anyhow!("{}: {}", pgpass_path.display(), e))
             })?;
             writer.flush()?;
         }

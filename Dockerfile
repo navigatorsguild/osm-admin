@@ -9,9 +9,8 @@ RUN cargo init --vcs none --lib .
 
 COPY ./Cargo.toml ./Cargo.toml
 COPY ./Cargo.lock ./Cargo.lock
-RUN cargo update --locked
+RUN cargo update
 COPY ./src ./src
-RUN cargo clean
 RUN cargo build -r
 
 
