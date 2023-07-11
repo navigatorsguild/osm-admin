@@ -84,7 +84,6 @@ services:
       "--dump", "/var/lib/osm/output/dump",
       "--output", "/var/lib/osm/output/result.osm.pbf",
       "--output-format", "pbf",
-      "--compression-level", "0",
       "--calc-bounding-box",
       "--host", "osm-test-db",
       "--port", "5432",

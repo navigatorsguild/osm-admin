@@ -8,7 +8,8 @@ RUN apt-get install -y protobuf-compiler
 RUN cargo init --vcs none --lib .
 
 COPY ./Cargo.toml ./Cargo.toml
-RUN cargo update
+COPY ./Cargo.lock ./Cargo.lock
+RUN cargo update --locked
 COPY ./src ./src
 RUN cargo clean
 RUN cargo build -r

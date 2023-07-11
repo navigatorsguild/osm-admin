@@ -24,7 +24,6 @@ docker run --rm --name osm-admin -it \
   --dump /var/lib/osm/dump \
   --output /var/lib/osm/output/result.osm.pbf \
   --output-format pbf \
-  --compression-level 0 \
   --host osm-test-db \
   --port 5432 \
   --database openstreetmap \

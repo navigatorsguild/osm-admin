@@ -23,7 +23,6 @@ fn command() -> Command {
                 .arg(arg!(--input <INPUT> "Input file path").required(true).value_parser(clap::value_parser!(PathBuf)).num_args(1))
                 .arg(arg!(--"input-format" <INPUT_FORMAT> "The input format. Currently, only pbf is supported").value_parser(["pbf"]).default_value("pbf").num_args(1))
                 .arg(arg!(--output <OUTPUT> "Output directory path").required(true).value_parser(clap::value_parser!(PathBuf)).num_args(1))
-                .arg(arg!(--"compression-level" <COMPRESSION_LEVEL> "Compression level 0..9. Zero means no compression").value_parser(0..10).default_value("0").num_args(1))
                 .arg(arg!(--jobs <JOBS> "Number of database load jobs. Zero means autodetect CPU allocation and use all CPUs. When more jobs than CPUs specified, the number is capped on CPU limit").value_parser(0..1024).default_value("0").num_args(1))
                 .arg(arg!(--host <HOST> "Database host").required(true).num_args(1))
                 .arg(arg!(--port <PORT> "Database port").default_value("5432").num_args(1))
@@ -39,7 +38,6 @@ fn command() -> Command {
                 .arg(arg!(--dump <DUMP> "Dump directory path").required(true).value_parser(clap::value_parser!(PathBuf)).num_args(1))
                 .arg(arg!(--output <OUTPUT> "Output file path").required(true).value_parser(clap::value_parser!(PathBuf)).num_args(1))
                 .arg(arg!(--"output-format" <OUTPUT_FORMAT> "The output format, currently only pbf is supported").value_parser(["pbf"]).default_value("pbf").num_args(1))
-                .arg(arg!(--"compression-level" <COMPRESSION_LEVEL> "Compression level 0..9. Zero means no compression").value_parser(0..10).default_value("0").num_args(1))
                 .arg(arg!(--"bounding-box" <BOUNDING_BOX> "The precomputed bounding box in the form 'left,bottom,right,top' as in 5.8663153,47.2701114,15.0419309,55.099161").value_parser(clap::value_parser!(String)).num_args(1))
                 .arg(arg!(--"calc-bounding-box" "Calculate the bounding box. Will incur an iteration over all the node elements. When present --bounding-box is ignored").required(false).num_args(0))
                 .arg(arg!(--"osmosis-replication-timestamp" <OSMOSIS_REPLICATION_TIMESTAMP> "Osmosis replication timestamp").value_parser(clap::value_parser!(i64)).num_args(1))
@@ -127,8 +125,6 @@ fn handle_import(
     let output_path = sub_matches.get_one::<PathBuf>("output")
         .unwrap()
         .clone();
-    let compression_level: i8 = *sub_matches.get_one::<i64>("compression-level")
-        .unwrap() as i8;
     let jobs: i16 = adjust_jobs_to_available_cpus(
         *sub_matches.get_one::<i64>("jobs").unwrap() as i16
     );
@@ -152,7 +148,6 @@ fn handle_import(
         input_path,
         input_format,
         output_path,
-        compression_level,
         jobs,
         host,
         port,
@@ -180,8 +175,6 @@ fn handle_export(
     let output_format = sub_matches.get_one::<String>("output-format")
         .unwrap()
         .clone();
-    let compression_level: i8 = *sub_matches.get_one::<i64>("compression-level")
-        .unwrap() as i8;
     let bounding_box_opt = sub_matches.get_one::<String>("bounding-box")
         .clone();
     let bounding_box = match bounding_box_opt {
@@ -218,7 +211,6 @@ fn handle_export(
         &dump_path,
         &output_path,
         output_format,
-        compression_level,
         bounding_box,
         calc_bounding_box,
         osmosis_replication_timestamp,
