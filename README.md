@@ -6,7 +6,7 @@ efficient import and export of *.osm.pbf files into and from an `apidb` schema o
 [openstreetmap-website](https://github.com/openstreetmap/openstreetmap-website). 
 
 ## Status
-The project is in the alpha stage of its first version 0.1.0
+The project is in the beta stage of its first version 0.1.0
 
 ## Issues
 Issues are welcome and appreciated. Please submit to https://github.com/navigatorsguild/osm-admin/issues
@@ -29,7 +29,7 @@ MIT or Apache-2.0 licences
 
 ### Pull
 ```bash
-$ docker pull navigatorsguild/osm-admin
+docker pull navigatorsguild/osm-admin
 ```
 
 ### Prepare the data
@@ -37,16 +37,30 @@ The data can be downloaded from https://planet.openstreetmap.org/pbf/planet-late
 To get started we recommend using geographical extracts prepared with osmium or downloaded from http://download.geofabrik.de/
 
 ```bash
-$ osmium getid -r -t planet-latest.osm.pbf r365307 -o malta-boundary-latest.osm
-$ osmium extract -p malta-boundary-latest.osm -o malta-latest.osm.pbf planet-latest.osm.pbf
+osmium getid -r -t planet-latest.osm.pbf r365307 -o malta-boundary-latest.osm
+osmium extract -p malta-boundary-latest.osm -o malta-latest.osm.pbf planet-latest.osm.pbf
 ```
+or downloaded from http://download.geofabrik.de/ 
+```bash
+curl -v -o malta-latest.osm.pbf http://download.geofabrik.de/europe/malta-latest.osm.pbf
+```
+
+Validate the file with osmium
+```bash
+osmium fileinfo -e malta-latest.osm.pbf
+```
+
+Assuming there is a PostgreSQL database named `OSM_DATABASE` running on `OSM_HOST:OSM_PORT` with a user `OSM_USER` the 
+following command will populate the database with the data from freshly downloaded malta-latest.osm.pbf. If there is 
+no readily available database for experimentation, please see the [Experiment](https://github.com/navigatorsguild/osm-admin/wiki/Experiment) 
+page for instructions on how to set up one.
 
 ### Import
 ```bash
-$ touch touch pg_restore.log
-$ touch touch pg_restore.error.log
-$ docker volume create osm-admin-vol
-$ docker run --rm --name osm-admin -it \
+touch touch pg_restore.log
+touch touch pg_restore.error.log
+docker volume create osm-admin-vol
+docker run --rm --name osm-admin -it \
   -v ${PWD}/<PGPASSFILE>:/root/.pgpass \
   -v osm-admin-vol:/var/lib/osm/ \
   -v ${PWD}/pg_restore.log:/var/log/osm/pg_restore.log \
@@ -61,6 +75,7 @@ $ docker run --rm --name osm-admin -it \
   --host <OSM_HOST> \
   --port <OSM_PORT> \
   --user <OSM_USER> \
+  --database <OSM_DATABASE> \
   --no-password
 ```
 

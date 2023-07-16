@@ -4,6 +4,7 @@ WORKDIR /home/osm-admin
 
 RUN apt-get update
 RUN apt-get install -y protobuf-compiler
+RUN apt-get install -y libmagic1 libmagic-dev
 
 RUN cargo init --vcs none --lib .
 
@@ -17,6 +18,7 @@ RUN cargo build -r
 FROM ubuntu:22.04
 RUN apt-get update
 RUN apt-get install -y postgresql-client
+RUN apt-get install -y libmagic1 libmagic-dev
 RUN mkdir -p /var/log/osm
 RUN mkdir -p /var/lib/osm
 RUN rm -f /opt/osm-admin/bin/osm

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 
-cp ./tests/fixtures/niue-230109.osm.pbf tests/fixtures/test.osm.pbf
-#cp ./tests/fixtures/history-niue-230109.osm.pbf tests/fixtures/test.osm.pbf
-#cp ./tests/fixtures/malta-230109.osm.pbf tests/fixtures/test.osm.pbf
-#cp ./tests/fixtures/history-malta-230109.osm.pbf tests/fixtures/test.osm.pbf
-#cp ./tests/fixtures/denmark-230109.osm.pbf tests/fixtures/test.osm.pbf
-#cp ./tests/fixtures/history-denmark-230109.osm.pbf tests/fixtures/test.osm.pbf
+cp ./tests/fixtures/niue-230612.osm.pbf tests/fixtures/test.osm.pbf
+#cp ./tests/fixtures/history-niue-230612.osm.pbf tests/fixtures/test.osm.pbf
+#cp ./tests/fixtures/malta-230612.osm.pbf tests/fixtures/test.osm.pbf
+#cp ./tests/fixtures/history-malta-230612.osm.pbf tests/fixtures/test.osm.pbf
+#cp ./tests/fixtures/denmark-230612.osm.pbf tests/fixtures/test.osm.pbf
+#cp ./tests/fixtures/history-denmark-230612.osm.pbf tests/fixtures/test.osm.pbf
 
 touch ./pg_restore.log
 touch ./pg_restore.error.log

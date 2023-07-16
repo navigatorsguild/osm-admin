@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# cleanup
+echo cleanup
 docker stop osm-test-db
 docker rm -f osm-test-db
 docker network rm osm-test-net
@@ -8,13 +8,13 @@ docker volume rm -f osm-test-db-vol
 docker volume rm -f osm-test-vol
 docker image rm osm-test-db
 
-# build
+echo build
 docker build db -t osm-test-db
 docker volume create osm-test-db-vol
 docker volume create osm-test-vol
 docker network create osm-test-net
 
-# run openstreetmap database
+echo run openstreetmap database
 docker run \
   --network osm-test-net \
   --name osm-test-db \
@@ -32,16 +32,16 @@ done
 
 
 # copy one of the files below for test import
-cp ./tests/fixtures/niue-230109.osm.pbf tests/fixtures/test.osm.pbf
-#cp ./tests/fixtures/history-niue-230109.osm.pbf tests/fixtures/test.osm.pbf
-#cp ./tests/fixtures/malta-230109.osm.pbf tests/fixtures/test.osm.pbf
-#cp ./tests/fixtures/history-malta-230109.osm.pbf tests/fixtures/test.osm.pbf
-#cp ./tests/fixtures/denmark-230109.osm.pbf tests/fixtures/test.osm.pbf
-#cp ./tests/fixtures/history-denmark-230109.osm.pbf tests/fixtures/test.osm.pbf
-#cp ./tests/fixtures/germany-230109.osm.pbf tests/fixtures/test.osm.pbf
-#cp ./tests/fixtures/history-germany-230109.osm.pbf tests/fixtures/test.osm.pbf
+cp ./tests/fixtures/niue-230612.osm.pbf tests/fixtures/test.osm.pbf
+#cp ./tests/fixtures/history-niue-230612.osm.pbf tests/fixtures/test.osm.pbf
+#cp ./tests/fixtures/malta-230612.osm.pbf tests/fixtures/test.osm.pbf
+#cp ./tests/fixtures/history-malta-230612.osm.pbf tests/fixtures/test.osm.pbf
+#cp ./tests/fixtures/denmark-230612.osm.pbf tests/fixtures/test.osm.pbf
+#cp ./tests/fixtures/history-denmark-230612.osm.pbf tests/fixtures/test.osm.pbf
+#cp ./tests/fixtures/germany-230612.osm.pbf tests/fixtures/test.osm.pbf
+#cp ./tests/fixtures/history-germany-230612.osm.pbf tests/fixtures/test.osm.pbf
 
-# run the import
+echo run the import
 echo "" >  ./pg_restore.log
 echo "" >  ./pg_restore.error.log
 chmod go-rwx ./db/pgpass

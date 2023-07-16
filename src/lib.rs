@@ -1,9 +1,11 @@
 extern crate core;
 
+use std::fs;
 use std::path::PathBuf;
 
 use benchmark_rs::stopwatch::StopWatch;
 use chrono::{DateTime, SecondsFormat, Utc};
+use filemagic::magic;
 use num_format::{Locale, ToFormattedString};
 use osm_io::osm::apidb_dump::read::reader::Reader;
 use osm_io::osm::apidb_dump::write::writer::Writer as ApiDbDumpWriter;
@@ -35,6 +37,11 @@ pub fn import(
     let mut stopwatch = StopWatch::new();
     stopwatch.start();
 
+    if verbose {
+        log::info!("Verbose flag set, checking file parameters for {}", input_path.display());
+        check_file(&input_path)?;
+    }
+
     log::info!("Start apidb dump generation");
     let pbf_reader = PbfReader::new(&input_path)?;
     let mut objects = 0 as i64;
@@ -65,6 +72,33 @@ pub fn import(
     db::pg::restore(jobs, host, port, database, user, password, &output_path, var_lib_path, var_log_path)?;
     log::info!("Finish load into OSM DB, time (hours): {}", stopwatch);
     Ok(())
+}
+
+fn check_file(path: &PathBuf) -> Result<(), anyhow::Error> {
+    if path.exists() {
+        let md = fs::metadata(&path)?;
+        if md.is_file() {
+            if md.len() > 0 {
+                let magic = magic!()?;
+                match magic.file(&path)?.as_str() {
+                    "OpenStreetMap Protocolbuffer Binary Format" => {
+                        log::info!("Found OSM PBF file, path: {}, size: {}", path.display(), md.len());
+                        Ok(())
+                    }
+                    _ => {
+                        Err(anyhow::anyhow!("Path {}, does not point to a OSM PBF file but to a {}", path.display(), magic.file(&path)?))
+                    }
+                }
+            } else {
+                Err(anyhow::anyhow!("Path {}, points to an empty file", path.display()))
+            }
+        } else {
+            let magic = magic!()?;
+            Err(anyhow::anyhow!("Path {}, does not point to a file but to a {}", path.display(), magic.file(&path)?))
+        }
+    } else {
+        Err(anyhow::anyhow!("File does not exist at {}", path.display()))
+    }
 }
 
 fn print_progress(output_path: &PathBuf, stopwatch: &StopWatch, objects: i64, i: usize) -> Result<(), anyhow::Error> {
@@ -189,8 +223,8 @@ fn select_replication_params(
     osmosis_replication_timestamp: Option<i64>,
     osmosis_replication_sequence_number: Option<i64>,
     dump_timestamp: DateTime<Utc>,
-    dump_transaction_id: u64
-) -> (Option<i64>, Option<i64>){
+    dump_transaction_id: u64,
+) -> (Option<i64>, Option<i64>) {
     let timestamp = match osmosis_replication_timestamp {
         None => {
             log::info!(
@@ -203,7 +237,7 @@ fn select_replication_params(
             Some(timestamp)
         }
     };
-    let sequence_number = match osmosis_replication_sequence_number{
+    let sequence_number = match osmosis_replication_sequence_number {
         None => {
             log::info!(
                 "No osmosis_replication_sequence_number provided, using dump transaction id: {}",
@@ -256,3 +290,43 @@ fn calculate_bounding_box(calc_bounding_box: bool, bounding_box_opt: Option<Boun
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use crate::check_file;
+
+    #[test]
+    #[should_panic]
+    fn test_check_non_existent_file() {
+        let path = PathBuf::from("./tests/fixtures/non-existent");
+        check_file(&path).expect("non existent file");
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_check_empty_file() {
+        let path = PathBuf::from("./tests/fixtures/empty");
+        check_file(&path).expect("empty file");
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_check_directory() {
+        let path = PathBuf::from("./tests/fixtures/");
+        check_file(&path).expect("directory");
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_check_text() {
+        let path = PathBuf::from("./tests/fixtures/text");
+        check_file(&path).expect("text file");
+    }
+
+    #[test]
+    fn test_check_good_file() {
+        let path = PathBuf::from("./tests/fixtures/niue-230109.osm.pbf");
+        check_file(&path).unwrap();
+    }
+}
