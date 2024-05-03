@@ -1,9 +1,10 @@
-FROM rust:1.66-bullseye AS builder
+FROM rust:1.77-bullseye AS builder
 
 WORKDIR /home/osm-admin
 
 RUN apt-get update
 RUN apt-get install -y protobuf-compiler
+RUN apt-get install -y libmagic1 libmagic-dev
 
 RUN cargo init --vcs none --lib .
 

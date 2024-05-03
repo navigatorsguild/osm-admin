@@ -33,7 +33,11 @@ pub fn main() -> Result<(), anyhow::Error> {
     let mut input_element = input_elements.next();
     let mut output_element = output_elements.next();
     while input_element.is_some() && output_element.is_some() {
-        assert!(elements_are_equal(input_element.unwrap(), output_element.unwrap()));
+        if !elements_are_equal(input_element.as_ref().unwrap(), output_element.as_ref().unwrap()) {
+            println!("input element: {:?}", input_element);
+            println!("output element: {:?}", output_element);
+        }
+        assert!(elements_are_equal(input_element.as_ref().unwrap(), output_element.as_ref().unwrap()));
         input_element = input_elements.next();
         output_element = output_elements.next();
     }
@@ -44,7 +48,7 @@ pub fn main() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-fn elements_are_equal(input_element: Element, output_element: Element) -> bool {
+fn elements_are_equal(input_element: &Element, output_element: &Element) -> bool {
     if input_element.is_node() && output_element.is_node() {
         nodes_are_equal(input_element, output_element)
     } else if input_element.is_way() && output_element.is_way() {
@@ -58,7 +62,7 @@ fn elements_are_equal(input_element: Element, output_element: Element) -> bool {
     }
 }
 
-fn nodes_are_equal(input_element: Element, output_element: Element) -> bool {
+fn nodes_are_equal(input_element: &Element, output_element: &Element) -> bool {
     let input_node = if let Element::Node { node } = input_element {
         node
     } else {
@@ -82,7 +86,7 @@ fn nodes_are_equal(input_element: Element, output_element: Element) -> bool {
         && input_node.tags() == output_node.tags()
 }
 
-fn ways_are_equal(input_element: Element, output_element: Element) -> bool {
+fn ways_are_equal(input_element: &Element, output_element: &Element) -> bool {
     let input_way = if let Element::Way { way } = input_element {
         way
     } else {
@@ -122,7 +126,7 @@ fn compare_relation_members(input: &Vec<Member>, output: &Vec<Member>) -> bool {
     input_members == output_members
 }
 
-fn relations_are_equal(input_element: Element, output_element: Element) -> bool {
+fn relations_are_equal(input_element: &Element, output_element: &Element) -> bool {
     let input_relation = if let Element::Relation { relation } = input_element {
         relation
     } else {
